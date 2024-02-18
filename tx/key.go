@@ -7,15 +7,15 @@ import (
 
 type Key struct {
 	privKey *btcec.PrivateKey
-	pubKey  *btcec.PublicKey
-	net     *chaincfg.Params
+	PubKey  *btcec.PublicKey
+	Net     *chaincfg.Params
 }
 
 func NewKey(privKeyBytes []byte, net *chaincfg.Params) *Key {
 	privKey, pubKey := btcec.PrivKeyFromBytes(privKeyBytes)
 	return &Key{
 		privKey: privKey,
-		pubKey:  pubKey,
-		net:     net,
+		PubKey:  pubKey,
+		Net:     net,
 	}
 }

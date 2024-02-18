@@ -2,6 +2,7 @@ package tx
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcutil"
@@ -10,33 +11,34 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-// P2WPKH
-// privkey -> pubkey
-// hash160(pubkey) => witness program
-func (k *Key) CreateP2wpkh() (string, error) {
-	addr, err := k.createP2wpkh()
+// P2WSH
+// sha256(witness script) => witness program
+func (s *Script) CreateP2wsh() (string, error) {
+	addr, err := s.createP2wsh()
 	if err != nil {
 		return "", err
 	}
 	return addr.String(), nil
 }
 
-func (k *Key) createP2wpkh() (*btcutil.AddressWitnessPubKeyHash, error) {
-	witnessProg := btcutil.Hash160(k.PubKey.SerializeCompressed())
-	return btcutil.NewAddressWitnessPubKeyHash(witnessProg, k.Net)
+func (s *Script) createP2wsh() (*btcutil.AddressWitnessScriptHash, error) {
+	witnessProg := sha256.Sum256(s.Script)
+	return btcutil.NewAddressWitnessScriptHash(witnessProg[:], s.Net)
 }
 
-func (k *Key) RedeemP2wpkhTx(
+func (s *Script) RedeemP2wshTx(
 	prevHash *chainhash.Hash,
 	prevIndex uint32,
 	prevAmountSat int64,
 	sendAddrStr string,
 	feeSat int64,
+	preimage []byte,
+	key *Key,
 ) ([]byte, string, error) {
 	originTx := wire.NewMsgTx(2)
 	// originTx.LockTime = 0xffffffff
 
-	prevAddr, err := k.createP2wpkh()
+	prevAddr, err := s.createP2wsh()
 	if err != nil {
 		return nil, "", fmt.Errorf("fail createP2wpkh(prevAddr): %w", err)
 	}
@@ -46,7 +48,7 @@ func (k *Key) RedeemP2wpkhTx(
 	}
 	prevOutputFetcher := txscript.NewCannedPrevOutputFetcher(prevPkScript, prevAmountSat)
 
-	sendAddr, err := btcutil.DecodeAddress(sendAddrStr, k.Net)
+	sendAddr, err := btcutil.DecodeAddress(sendAddrStr, s.Net)
 	if err != nil {
 		return nil, "", fmt.Errorf("fail DecodeAddress(sendAddr): %w", err)
 	}
@@ -64,20 +66,19 @@ func (k *Key) RedeemP2wpkhTx(
 
 	sigHashes := txscript.NewTxSigHashes(originTx, prevOutputFetcher)
 	prevInIndex := int(0)
-	witSig, err := txscript.WitnessSignature(
+	witSig, err := txscript.RawTxInWitnessSignature(
 		originTx,
 		sigHashes,
 		prevInIndex,
 		prevAmountSat,
-		prevPkScript,
+		s.Script,
 		txscript.SigHashAll,
-		k.privKey,
-		true, // compress pubkey
+		key.privKey,
 	)
 	if err != nil {
 		return nil, "", fmt.Errorf("fail RawTxInWitnessSignature: %w", err)
 	}
-	txIn.Witness = witSig
+	txIn.Witness = [][]byte{witSig, preimage, s.Script}
 
 	var buf bytes.Buffer
 	originTx.Serialize(&buf)

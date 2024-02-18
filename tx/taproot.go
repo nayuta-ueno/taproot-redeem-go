@@ -22,9 +22,9 @@ func (k *Key) CreateP2TR() (string, error) {
 }
 
 func (k *Key) createP2tr() (*btcutil.AddressTaproot, error) {
-	pubKey := txscript.ComputeTaprootKeyNoScript(k.pubKey)
+	pubKey := txscript.ComputeTaprootKeyNoScript(k.PubKey)
 	witnessProg := schnorr.SerializePubKey(pubKey)
-	return btcutil.NewAddressTaproot(witnessProg, k.net)
+	return btcutil.NewAddressTaproot(witnessProg, k.Net)
 }
 
 func (k *Key) CreateRawTxP2TR(
@@ -46,7 +46,7 @@ func (k *Key) CreateRawTxP2TR(
 	}
 	prevOutputFetcher := txscript.NewCannedPrevOutputFetcher(prevPkScript, prevAmountSat)
 
-	sendAddr, err := btcutil.DecodeAddress(sendAddrStr, k.net)
+	sendAddr, err := btcutil.DecodeAddress(sendAddrStr, k.Net)
 	if err != nil {
 		return nil, "", fmt.Errorf("fail DecodeAddress(sendAddr): %w", err)
 	}
