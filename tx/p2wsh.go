@@ -47,6 +47,7 @@ func (s *Script) RedeemP2wshTx(
 		return nil, "", fmt.Errorf("fail PayToAddrScript(prevAddr): %w", err)
 	}
 	prevOutputFetcher := txscript.NewCannedPrevOutputFetcher(prevPkScript, prevAmountSat)
+	txinIndex := int(0)
 
 	sendAddr, err := btcutil.DecodeAddress(sendAddrStr, s.Net)
 	if err != nil {
@@ -65,11 +66,10 @@ func (s *Script) RedeemP2wshTx(
 	originTx.AddTxIn(txIn)
 
 	sigHashes := txscript.NewTxSigHashes(originTx, prevOutputFetcher)
-	prevInIndex := int(0)
 	witSig, err := txscript.RawTxInWitnessSignature(
 		originTx,
 		sigHashes,
-		prevInIndex,
+		txinIndex,
 		prevAmountSat,
 		s.Script,
 		txscript.SigHashAll,

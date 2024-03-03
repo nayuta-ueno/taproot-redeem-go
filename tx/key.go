@@ -2,6 +2,7 @@ package tx
 
 import (
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/chaincfg"
 )
 
@@ -18,4 +19,8 @@ func NewKey(privKeyBytes []byte, net *chaincfg.Params) *Key {
 		PubKey:  pubKey,
 		Net:     net,
 	}
+}
+
+func (k *Key) SerializeSchnorrPubKey() []byte {
+	return schnorr.SerializePubKey(k.PubKey)
 }

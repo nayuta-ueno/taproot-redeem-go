@@ -4,41 +4,45 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 )
 
-// P2WPKH
-// privkey -> pubkey
-// hash160(pubkey) => witness program
-func (k *Key) CreateP2wpkh() (string, error) {
-	addr, err := k.createP2wpkh()
+// P2TR script
+func (s *TapScript) CreateP2tr() (string, error) {
+	addr, err := s.createP2tr()
 	if err != nil {
 		return "", err
 	}
 	return addr.String(), nil
 }
 
-func (k *Key) createP2wpkh() (*btcutil.AddressWitnessPubKeyHash, error) {
-	witnessProg := btcutil.Hash160(k.PubKey.SerializeCompressed())
-	return btcutil.NewAddressWitnessPubKeyHash(witnessProg, k.Net)
+func (s *TapScript) createP2tr() (*btcutil.AddressTaproot, error) {
+	tree := txscript.AssembleTaprootScriptTree(s.Scripts...)
+	rootHash := tree.RootNode.TapHash()
+	pubKey := txscript.ComputeTaprootOutputKey(s.Key.PubKey, rootHash[:])
+	witnessProg := schnorr.SerializePubKey(pubKey)
+	return btcutil.NewAddressTaproot(witnessProg, s.Net)
 }
 
-func (k *Key) RedeemP2wpkhTx(
+func (s *TapScript) CreateRawTxP2TR(
 	prevHash *chainhash.Hash,
 	prevIndex uint32,
 	prevAmountSat int64,
 	sendAddrStr string,
 	feeSat int64,
+	scriptIdx int,
+	witnessStack [][]byte,
+	key *Key,
 ) ([]byte, string, error) {
 	originTx := wire.NewMsgTx(2)
-	// originTx.LockTime = 0xffffffff
 
-	prevAddr, err := k.createP2wpkh()
+	prevAddr, err := s.createP2tr()
 	if err != nil {
-		return nil, "", fmt.Errorf("fail createP2wpkh(prevAddr): %w", err)
+		return nil, "", fmt.Errorf("fail createP2tr(prevAddr): %w", err)
 	}
 	prevPkScript, err := txscript.PayToAddrScript(prevAddr)
 	if err != nil {
@@ -47,7 +51,7 @@ func (k *Key) RedeemP2wpkhTx(
 	prevOutputFetcher := txscript.NewCannedPrevOutputFetcher(prevPkScript, prevAmountSat)
 	txinIndex := int(0)
 
-	sendAddr, err := btcutil.DecodeAddress(sendAddrStr, k.Net)
+	sendAddr, err := btcutil.DecodeAddress(sendAddrStr, s.Net)
 	if err != nil {
 		return nil, "", fmt.Errorf("fail DecodeAddress(sendAddr): %w", err)
 	}
@@ -63,21 +67,33 @@ func (k *Key) RedeemP2wpkhTx(
 	txIn := wire.NewTxIn(prevOut, nil, nil)
 	originTx.AddTxIn(txIn)
 
+	// control block
+	indexedTree := txscript.AssembleTaprootScriptTree(s.Scripts...)
+	settleMerkleProof := indexedTree.LeafMerkleProofs[scriptIdx]
+	cb := settleMerkleProof.ToControlBlock(s.Key.PubKey)
+	cbBytes, _ := cb.ToBytes()
+
 	sigHashes := txscript.NewTxSigHashes(originTx, prevOutputFetcher)
-	witness, err := txscript.WitnessSignature(
+	witSig, err := txscript.RawTxInTapscriptSignature(
 		originTx,
 		sigHashes,
 		txinIndex,
 		prevAmountSat,
 		prevPkScript,
-		txscript.SigHashAll,
-		k.privKey,
-		true, // compress pubkey
+		s.Scripts[scriptIdx], // leaf
+		txscript.SigHashDefault,
+		key.privKey,
 	)
 	if err != nil {
 		return nil, "", fmt.Errorf("fail RawTxInWitnessSignature: %w", err)
 	}
-	txIn.Witness = witness
+	txIn.Witness = make([][]byte, len(witnessStack)+3) // signature + <witnessStack> + redeem_script + control_block
+	txIn.Witness[0] = witSig
+	for i := 0; i < len(witnessStack); i++ {
+		txIn.Witness[1+i] = witnessStack[i]
+	}
+	txIn.Witness[len(txIn.Witness)-2] = s.Scripts[scriptIdx].Script
+	txIn.Witness[len(txIn.Witness)-1] = cbBytes
 
 	var buf bytes.Buffer
 	originTx.Serialize(&buf)
