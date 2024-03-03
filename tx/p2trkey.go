@@ -45,6 +45,7 @@ func (k *Key) CreateRawTxP2TR(
 		return nil, "", fmt.Errorf("fail PayToAddrScript(prevAddr): %w", err)
 	}
 	prevOutputFetcher := txscript.NewCannedPrevOutputFetcher(prevPkScript, prevAmountSat)
+	txinIndex := int(0)
 
 	sendAddr, err := btcutil.DecodeAddress(sendAddrStr, k.Net)
 	if err != nil {
@@ -62,12 +63,11 @@ func (k *Key) CreateRawTxP2TR(
 	txIn := wire.NewTxIn(prevOut, nil, nil)
 	originTx.AddTxIn(txIn)
 
-	prevInIndex := int(0)
 	sigHashes := txscript.NewTxSigHashes(originTx, prevOutputFetcher)
 	witness, err := txscript.TaprootWitnessSignature(
 		originTx,
 		sigHashes,
-		prevInIndex,
+		txinIndex,
 		prevAmountSat,
 		prevPkScript,
 		txscript.SigHashDefault,

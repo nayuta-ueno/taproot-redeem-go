@@ -45,6 +45,7 @@ func (k *Key) RedeemP2wpkhTx(
 		return nil, "", fmt.Errorf("fail PayToAddrScript(prevAddr): %w", err)
 	}
 	prevOutputFetcher := txscript.NewCannedPrevOutputFetcher(prevPkScript, prevAmountSat)
+	txinIndex := int(0)
 
 	sendAddr, err := btcutil.DecodeAddress(sendAddrStr, k.Net)
 	if err != nil {
@@ -63,11 +64,10 @@ func (k *Key) RedeemP2wpkhTx(
 	originTx.AddTxIn(txIn)
 
 	sigHashes := txscript.NewTxSigHashes(originTx, prevOutputFetcher)
-	prevInIndex := int(0)
 	witness, err := txscript.WitnessSignature(
 		originTx,
 		sigHashes,
-		prevInIndex,
+		txinIndex,
 		prevAmountSat,
 		prevPkScript,
 		txscript.SigHashAll,
